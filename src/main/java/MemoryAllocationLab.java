@@ -1,161 +1,294 @@
 import java.io.*;
 import java.util.*;
 
+/**
+ * MemoryAllocationLab.java
+ * Simple memory allocator simulator (First-Fit).
+ *
+ * Input file format:
+ * - First non-empty line: total memory (integer)
+ * - Following lines:
+ *    <name> <size>       e.g. P1 100   (allocate)
+ *    FREE <name>         e.g. FREE P1  (deallocate)
+ *    D <name> or DEALLOC <name> also accepted
+ *
+ * Prints actions, block table after each action, and final stats.
+ */
+
 public class MemoryAllocationLab {
 
-    static class MemoryBlock {
-        int start;
-        int size;
-        String processName;  // null if free
+    static class Block {
+        int start;      // starting address 
+        int size;       // block size
+        String proc;    // null if free, otherwise the process name
 
-        public MemoryBlock(int start, int size, String processName) {
+        Block(int start, int size, String proc) {
             this.start = start;
             this.size = size;
-            this.processName = processName;
+            this.proc = proc;
         }
 
-        public boolean isFree() {
-            return processName == null;
+        boolean isFree() {
+            return proc == null;
         }
 
-        public int getEnd() {
-            return start + size - 1;
+        @Override
+        public String toString() {
+            if (isFree()) return String.format("[Free  start=%d size=%d]", start, size);
+            else return String.format("[%s start=%d size=%d]", proc, start, size);
         }
     }
 
-    static int totalMemory;
-    static ArrayList<MemoryBlock> memory;
-    static int successfulAllocations = 0;
-    static int failedAllocations = 0;
+    private int totalMemory;
+    private LinkedList<Block> blocks; // maintain order in memory
+    private int allocSuccess = 0;
+    private int allocFail = 0;
 
-    /**
-     * TODO 1, 2: Process memory requests from file
-     * <p>
-     * This method reads the input file and processes each REQUEST and RELEASE.
-     * <p>
-     * TODO 1: Read and parse the file
-     *   - Open the file using BufferedReader
-     *   - Read the first line to get total memory size
-     *   - Initialize the memory list with one large free block
-     *   - Read each subsequent line and parse it
-     *   - Call appropriate method based on REQUEST or RELEASE
-     * <p>
-     * TODO 2: Implement allocation and deallocation
-     *   - For REQUEST: implement First-Fit algorithm
-     *     * Search memory list for first free block >= requested size
-     *     * If found: split the block if necessary and mark as allocated
-     *     * If not found: increment failedAllocations
-     *   - For RELEASE: find the process's block and mark it as free
-     *   - Optionally: merge adjacent free blocks (bonus)
-     */
-    public static void processRequests(String filename) {
-        memory = new ArrayList<>();
-
-        // TODO 1: Read file and initialize memory
-        // Try-catch block to handle file reading
-        // Read first line for total memory size
-        // Create initial free block: new MemoryBlock(0, totalMemory, null)
-        // Read remaining lines in a loop
-        // Parse each line and call allocate() or deallocate()
-
-
-        // TODO 2: Implement these helper methods
-
+    public MemoryAllocationLab(int totalMemory) {
+        this.totalMemory = totalMemory;
+        blocks = new LinkedList<>();
+        blocks.add(new Block(0, totalMemory, null)); 
     }
 
-    /**
-     * TODO 2A: Allocate memory using First-Fit
-     */
-    private static void allocate(String processName, int size) {
-        // Search through memory list
-        // Find first free block where size >= requested size
-        // If found:
-        //   - Mark block as allocated (set processName)
-        //   - If block is larger than needed, split it:
-        //     * Create new free block for remaining space
-        //     * Add it to memory list after current block
-        //   - Increment successfulAllocations
-        //   - Print success message
-        // If not found:
-        //   - Increment failedAllocations
-        //   - Print failure message
-
-    }
-
-    public static void displayStatistics() {
-        System.out.println("\n========================================");
-        System.out.println("Final Memory State");
-        System.out.println("========================================");
-
-        int blockNum = 1;
-        for (MemoryBlock block : memory) {
-            String status = block.isFree() ? "FREE" : block.processName;
-            String allocated = block.isFree() ? "" : " - ALLOCATED";
-            System.out.printf("Block %d: [%d-%d]%s%s (%d KB)%s\n",
-                    blockNum++,
-                    block.start,
-                    block.getEnd(),
-                    " ".repeat(Math.max(1, 10 - String.valueOf(block.getEnd()).length())),
-                    status,
-                    block.size,
-                    allocated);
-        }
-
-        System.out.println("\n========================================");
-        System.out.println("Memory Statistics");
-        System.out.println("========================================");
-
-        int allocatedMem = 0;
-        int freeMem = 0;
-        int numProcesses = 0;
-        int numFreeBlocks = 0;
-        int largestFree = 0;
-
-        for (MemoryBlock block : memory) {
-            if (block.isFree()) {
-                freeMem += block.size;
-                numFreeBlocks++;
-                largestFree = Math.max(largestFree, block.size);
-            } else {
-                allocatedMem += block.size;
-                numProcesses++;
+    // First-Fit allocation
+    public boolean allocateFirstFit(String procName, int reqSize) {
+        ListIterator<Block> it = blocks.listIterator();
+        while (it.hasNext()) {
+            Block b = it.next();
+            if (b.isFree() && b.size >= reqSize) {
+                int originalStart = b.start;
+                // If exactly fits just occupy block
+                if (b.size == reqSize) {
+                    b.proc = procName;
+                } else {
+                    
+                    int leftoverSize = b.size - reqSize;
+                    Block allocated = new Block(b.start, reqSize, procName);
+                    Block leftover = new Block(b.start + reqSize, leftoverSize, null);
+                    
+                    it.remove();            // remove b
+                    it.add(allocated);      
+                    it.add(leftover);       
+                }
+                System.out.printf("ALLOCATE %s %d -> success (used start=%d)\n", procName, reqSize, originalStart);
+                allocSuccess++;
+                printBlocks();
+                return true;
             }
         }
-
-        double allocatedPercent = (allocatedMem * 100.0) / totalMemory;
-        double freePercent = (freeMem * 100.0) / totalMemory;
-        double fragmentation = freeMem > 0 ?
-                ((freeMem - largestFree) * 100.0) / freeMem : 0;
-
-        System.out.printf("Total Memory:           %d KB\n", totalMemory);
-        System.out.printf("Allocated Memory:       %d KB (%.2f%%)\n", allocatedMem, allocatedPercent);
-        System.out.printf("Free Memory:            %d KB (%.2f%%)\n", freeMem, freePercent);
-        System.out.printf("Number of Processes:    %d\n", numProcesses);
-        System.out.printf("Number of Free Blocks:  %d\n", numFreeBlocks);
-        System.out.printf("Largest Free Block:     %d KB\n", largestFree);
-        System.out.printf("External Fragmentation: %.2f%%\n", fragmentation);
-
-        System.out.println("\nSuccessful Allocations: " + successfulAllocations);
-        System.out.println("Failed Allocations:     " + failedAllocations);
-        System.out.println("========================================");
+        System.out.printf("ALLOCATE %s %d -> FAIL (no single contiguous block big enough)\n", procName, reqSize);
+        allocFail++;
+        printBlocks();
+        return false;
     }
 
-    /**
-     * Main method (FULLY PROVIDED)
-     */
+    // Deallocation and merge adjacent free blocks
+    public boolean deallocate(String procName) {
+        ListIterator<Block> it = blocks.listIterator();
+        boolean found = false;
+        while (it.hasNext()) {
+            Block b = it.next();
+            if (!b.isFree() && b.proc.equals(procName)) {
+                b.proc = null; // free it
+                found = true;
+                System.out.printf("DEALLOCATE %s -> success (freed start=%d size=%d)\n", procName, b.start, b.size);
+                // attempt merge with previous
+                if (it.hasPrevious()) {
+                    
+                }
+                mergeAdjacent();
+                printBlocks();
+                break;
+            }
+        }
+        if (!found) {
+            System.out.printf("DEALLOCATE %s -> fail (process not found)\n", procName);
+            printBlocks();
+        }
+        return found;
+    }
+
+    // Merge 
+    private void mergeAdjacent() {
+        ListIterator<Block> it = blocks.listIterator();
+        while (it.hasNext()) {
+            Block cur = it.next();
+            if (!cur.isFree()) continue;
+            // if next exists and is free merge
+            if (it.hasNext()) {
+                Block nxt = it.next();
+                if (nxt.isFree()) {
+                    
+                    it.previous(); 
+                    it.previous(); 
+                    it.remove();   
+                    it.add(new Block(cur.start, cur.size + nxt.size, null)); // merged block
+                    it.next();     
+                    it.next();     
+                    it.remove();   
+                    
+                    it = blocks.listIterator();
+                } else {
+                    it.previous(); 
+                }
+            }
+        }
+      
+        LinkedList<Block> merged = new LinkedList<>();
+        for (Block b : blocks) {
+            if (!merged.isEmpty() && merged.getLast().isFree() && b.isFree()) {
+                Block last = merged.removeLast();
+                merged.add(new Block(last.start, last.size + b.size, null));
+            } else {
+                merged.add(new Block(b.start, b.size, b.proc));
+            }
+        }
+        
+        int curr = 0;
+        blocks.clear();
+        for (Block b : merged) {
+            blocks.add(new Block(curr, b.size, b.proc));
+            curr += b.size;
+        }
+    }
+
+   
+    public void printBlocks() {
+        System.out.println("Current memory map:");
+        for (Block b : blocks) {
+            System.out.println("  " + b.toString());
+        }
+        System.out.println();
+    }
+
+    // Compute stats
+    public int totalFree() {
+        int sum = 0;
+        for (Block b : blocks) if (b.isFree()) sum += b.size;
+        return sum;
+    }
+
+    public int largestFreeBlock() {
+        int max = 0;
+        for (Block b : blocks) if (b.isFree() && b.size > max) max = b.size;
+        return max;
+    }
+
+    public void printFinalStats() {
+        System.out.println("===== FINAL STATS =====");
+        System.out.println("Total memory: " + totalMemory);
+        int free = totalFree();
+        int largest = largestFreeBlock();
+        System.out.println("Total free: " + free);
+        System.out.println("Largest free block: " + largest);
+        double extFrag = 0.0;
+        if (free > 0) extFrag = ((double)(free - largest) / totalMemory) * 100.0;
+        System.out.printf("External fragmentation: %.2f%%\n", extFrag);
+        System.out.printf("Alloc success: %d, failures: %d\n", allocSuccess, allocFail);
+        System.out.println("========================");
+    }
+
+  
+    public void runFromReader(BufferedReader br) throws IOException {
+        String line;
+        while ((line = br.readLine()) != null) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            String[] tok = line.split("\\s+");
+            if (tok.length == 0) continue;
+
+            if (tok.length == 1) {
+                
+                continue;
+            } else if (tok.length >= 2) {
+                
+                String t0 = tok[0].toUpperCase();
+                if (t0.equals("FREE") || t0.equals("D") || t0.equals("DEALLOC") || t0.equals("RELEASE")) {
+                    String pname = tok[1];
+                    deallocate(pname);
+                    continue;
+                }
+                
+                try {
+                    int size = Integer.parseInt(tok[1]);
+                    String pname = tok[0];
+                    allocateFirstFit(pname, size);
+                } catch (NumberFormatException nfe) {
+                    
+                    String t1 = tok[1].toUpperCase();
+                    if (t1.equals("FREE") || t1.equals("D") || t1.equals("DEALLOC") || t1.equals("RELEASE")) {
+                        deallocate(tok[0]);
+                    } else {
+                        System.out.println("Unrecognized line: " + line);
+                    }
+                }
+            }
+        }
+    }
+
+    // Run using file path
     public static void main(String[] args) {
         if (args.length < 1) {
-            System.out.println("Usage: java MemoryAllocationLab <input_file>");
-            System.out.println("Example: java MemoryAllocationLab memory_requests.txt");
+            System.out.println("Usage: java MemoryAllocationLab <input-file>");
+            System.out.println("See top of file for accepted input formats.");
             return;
         }
+        String path = args[0];
+        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
+            
+            String first = null;
+            while ((first = br.readLine()) != null) {
+                first = first.trim();
+                if (first.isEmpty() || first.startsWith("#")) continue;
+                break;
+            }
+            if (first == null) {
+                System.err.println("Empty input file or no valid total memory line.");
+                return;
+            }
+            int total;
+            try {
+                total = Integer.parseInt(first.split("\\s+")[0]);
+            } catch (NumberFormatException e) {
+                System.err.println("First meaningful line must be an integer total memory. Found: " + first);
+                return;
+            }
+            MemoryAllocationLab sim = new MemoryAllocationLab(total);
+            System.out.printf("Initialized memory simulator with total=%d\n\n", total);
+            
+            try (BufferedReader br2 = new BufferedReader(new FileReader(path))) {
+             
+                String line;
+                boolean skipped = false;
+                while ((line = br2.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    if (!skipped) { skipped = true; continue; } 
+                 
+                    sim.runFromReader(new BufferedReader(new StringReader(line + "\n")));
+                }
+            }
 
-        System.out.println("========================================");
-        System.out.println("Memory Allocation Simulator (First-Fit)");
-        System.out.println("========================================\n");
-        System.out.println("Reading from: " + args[0]);
+    
+            try (BufferedReader br3 = new BufferedReader(new FileReader(path))) {
+               
+                String l;
+                boolean skipped = false;
+                while ((l = br3.readLine()) != null) {
+                    l = l.trim();
+                    if (l.isEmpty() || l.startsWith("#")) continue;
+                    if (!skipped) { skipped = true; continue; }
+                    
+                    sim.runFromReader(new BufferedReader(new StringReader(l + "\n")));
+                }
+            }
 
-        processRequests(args[0]);
-        displayStatistics();
+            System.out.println("\nAll requests processed.");
+            sim.printFinalStats();
+
+        } catch (IOException e) {
+            System.err.println("Error reading file: " + e.getMessage());
+        }
     }
 }
+
